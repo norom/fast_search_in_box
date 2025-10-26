@@ -17,10 +17,9 @@ cmake-build-*/
 *.exe
 *.out
 *.app
-
-# Test binaries
-test_*
-*_test
+build/tests/test_*
+build/**/test_*
+build/**/*_test
 
 # OS
 .DS_Store
