@@ -96,7 +96,14 @@ public:
      * @param x2 Maximum x coordinate of the query box
      * @param y1 Minimum y coordinate of the query box
      * @param y2 Maximum y coordinate of the query box
+     * @param include_min Include lower edges (default: true) - [x1, [y1 vs (x1, (y1
+     * @param include_max Include upper edges (default: true) - x2], y2] vs x2), y2)
      * @return std::vector<size_t> Vector of all point indices in the box
+     *
+     * Edge inclusion examples:
+     * - [x1, x2] × [y1, y2]: both true (default, fully inclusive)
+     * - (x1, x2) × (y1, y2): both false (fully exclusive)
+     * - [x1, x2) × [y1, y2): include_min=true, include_max=false (half-open)
      *
      * Note: Returns all points in grid cells that intersect with the query box.
      * This may include points outside the exact box boundaries (false positives).
@@ -105,12 +112,14 @@ public:
      * Complexity: O(k * m) where k is the number of cells in the box
      * and m is the average number of points per cell.
      */
-    std::vector<size_t> query_box(T x1, T x2, T y1, T y2) const {
+    std::vector<size_t> query_box(T x1, T x2, T y1, T y2,
+                                   bool include_min = true, bool include_max = true) const {
         std::vector<size_t> result;
 
         // Get cell ranges
         int i_min, i_max, j_min, j_max;
-        get_cell_range(x1, x2, y1, y2, i_min, i_max, j_min, j_max);
+        get_cell_range(x1, x2, y1, y2, i_min, i_max, j_min, j_max,
+                      include_min, include_max);
 
         // Collect indices from all cells in range
         for (int j = j_min; j <= j_max; ++j) {
@@ -125,6 +134,62 @@ public:
     }
 
     /**
+     * @brief Query all point indices within a rectangular box (no allocation version)
+     *
+     * @param x1 Minimum x coordinate of the query box
+     * @param x2 Maximum x coordinate of the query box
+     * @param y1 Minimum y coordinate of the query box
+     * @param y2 Maximum y coordinate of the query box
+     * @param result Reference to vector to store results (will be cleared before use)
+     * @param append_results If true, append to existing results instead of clearing
+     * @param include_min Include lower edges (default: true) - [x1, [y1 vs (x1, (y1
+     * @param include_max Include upper edges (default: true) - x2], y2] vs x2), y2)
+     *
+     * This version allows you to reuse the same result vector across multiple queries,
+     * avoiding repeated allocations. The result vector is cleared at the start.
+     *
+     * Example:
+     * @code
+     * std::vector<size_t> result;
+     * result.reserve(1000);  // Pre-allocate once
+     *
+     * // Reuse the same vector for multiple queries
+     * grid.query_box_no_alloc(0, 10, 0, 10, result);
+     * // process result...
+     *
+     * grid.query_box_no_alloc(20, 30, 20, 30, result);
+     * // process result...
+     * @endcode
+     *
+     * Note: Returns all points in grid cells that intersect with the query box.
+     * This may include points outside the exact box boundaries (false positives).
+     * For exact results, filter the returned indices against actual point coordinates.
+     *
+     * Complexity: O(k * m) where k is the number of cells in the box
+     * and m is the average number of points per cell.
+     */
+    void query_box_no_alloc(T x1, T x2, T y1, T y2, std::vector<size_t>& result,
+                            bool append_results = false,
+                            bool include_min = true, bool include_max = true) const {
+        if(!append_results)
+            result.clear();
+
+        // Get cell ranges
+        int i_min, i_max, j_min, j_max;
+        get_cell_range(x1, x2, y1, y2, i_min, i_max, j_min, j_max,
+                      include_min, include_max);
+
+        // Collect indices from all cells in range
+        for (int j = j_min; j <= j_max; ++j) {
+            for (int i = i_min; i <= i_max; ++i) {
+                int cell_id = get_cell_id(i, j);
+                const auto& cell = grid_[cell_id];
+                result.insert(result.end(), cell.begin(), cell.end());
+            }
+        }
+    }
+
+    /**
      * @brief Query all point indices within a box using a callback
      *
      * @tparam Callback Function or lambda type: void(size_t index)
@@ -133,6 +198,8 @@ public:
      * @param y1 Minimum y coordinate of the query box
      * @param y2 Maximum y coordinate of the query box
      * @param callback Function called for each point index in the box
+     * @param include_min Include lower edges (default: true) - [x1, [y1 vs (x1, (y1
+     * @param include_max Include upper edges (default: true) - x2], y2] vs x2), y2)
      *
      * More efficient than query_box() when you don't need to store results.
      *
@@ -144,10 +211,12 @@ public:
      * @endcode
      */
     template<typename Callback>
-    void query_box_callback(T x1, T x2, T y1, T y2, Callback callback) const {
+    void query_box_callback(T x1, T x2, T y1, T y2, Callback callback,
+                           bool include_min = true, bool include_max = true) const {
         // Get cell ranges
         int i_min, i_max, j_min, j_max;
-        get_cell_range(x1, x2, y1, y2, i_min, i_max, j_min, j_max);
+        get_cell_range(x1, x2, y1, y2, i_min, i_max, j_min, j_max,
+                      include_min, include_max);
 
         // Call callback for each index in range
         for (int j = j_min; j <= j_max; ++j) {
@@ -244,7 +313,8 @@ private:
      */
     void get_cell_range(T x1, T x2, T y1, T y2,
                        int& i_min, int& i_max,
-                       int& j_min, int& j_max) const {
+                       int& j_min, int& j_max,
+                       bool include_min = true, bool include_max = true) const {
         // Ensure x1 <= x2 and y1 <= y2
         if (x1 > x2) std::swap(x1, x2);
         if (y1 > y2) std::swap(y1, y2);
@@ -254,6 +324,35 @@ private:
         i_max = static_cast<int>(std::floor((x2 - x_start_) / x_step_));
         j_min = static_cast<int>(std::floor((y1 - y_start_) / y_step_));
         j_max = static_cast<int>(std::floor((y2 - y_start_) / y_step_));
+
+        // Adjust for edge inclusion/exclusion
+        // If we exclude the minimum edge and x1/y1 is exactly on a cell boundary, skip that cell
+        if (!include_min) {
+            // Check if x1 is exactly on a cell boundary
+            T x1_normalized = (x1 - x_start_) / x_step_;
+            if (x1_normalized == std::floor(x1_normalized)) {
+                i_min++;
+            }
+            // Check if y1 is exactly on a cell boundary
+            T y1_normalized = (y1 - y_start_) / y_step_;
+            if (y1_normalized == std::floor(y1_normalized)) {
+                j_min++;
+            }
+        }
+
+        // If we exclude the maximum edge and x2/y2 is exactly on a cell boundary, skip that cell
+        if (!include_max) {
+            // Check if x2 is exactly on a cell boundary
+            T x2_normalized = (x2 - x_start_) / x_step_;
+            if (x2_normalized == std::floor(x2_normalized)) {
+                i_max--;
+            }
+            // Check if y2 is exactly on a cell boundary
+            T y2_normalized = (y2 - y_start_) / y_step_;
+            if (y2_normalized == std::floor(y2_normalized)) {
+                j_max--;
+            }
+        }
 
         // Clamp to valid range
         i_min = std::max(0, std::min(i_min, nx_ - 1));
