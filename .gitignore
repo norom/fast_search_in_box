@@ -1,0 +1,27 @@
+# Build directories
+build/
+cmake-build-*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Compiled Object files
+*.o
+*.obj
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Test binaries
+test_*
+*_test
+
+# OS
+.DS_Store
+Thumbs.db
