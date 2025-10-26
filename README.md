@@ -21,9 +21,14 @@ Traditional approaches like R-Tree have O(log(n)) complexity. Grid Index achieve
 - **Header-Only**: Single header file, easy to integrate into any C++ project
 - **Template-Based Coordinates**: Supports both `float` and `double` coordinate types
 - **Regular Grid Structure**: Defined by start, end, and step parameters for both axes
-- **Two Query Modes**:
-  - `query_box`: Returns a vector of all indices in the query box
-  - `query_box_callback`: Executes a callback function for each index in the query box
+- **Flexible Edge Handling**: Control boundary inclusion/exclusion with parameters
+  - Fully inclusive: `[x1, x2] × [y1, y2]` (default)
+  - Fully exclusive: `(x1, x2) × (y1, y2)`
+  - Half-open: `[x1, x2) × [y1, y2)`
+- **Multiple Query Modes**:
+  - `query_box()`: Returns a vector of all indices in the query box
+  - `query_box_no_alloc()`: Fills a provided vector (avoids allocations)
+  - `query_box_callback()`: Executes a callback function for each index
 - **Memory Efficient**: Uses a flat grid structure with index vectors per cell
 
 ## Use Cases
@@ -86,8 +91,16 @@ for (size_t i = 0; i < points.size(); ++i) {
     grid.insert(points[i].x, points[i].y, i);
 }
 
-// Query a box
+// Query a box (default: fully inclusive [x1, x2] × [y1, y2])
 auto indices = grid.query_box(x1, x2, y1, y2);
+
+// Query with edge control (half-open interval [x1, x2) × [y1, y2))
+auto half_open = grid.query_box(x1, x2, y1, y2, true, false);
+
+// Reuse vector to avoid allocations
+std::vector<size_t> result;
+result.reserve(1000);
+grid.query_box_no_alloc(x1, x2, y1, y2, result);
 
 // Or use callback
 grid.query_box_callback(x1, x2, y1, y2, [](size_t idx) {
@@ -110,9 +123,52 @@ GridIndex2D(T x_start, T x_end, T x_step,
 ```
 
 ### Methods
-- `void insert(T x, T y, size_t index)` - Insert a point index into the grid
-- `std::vector<size_t> query_box(T x1, T x2, T y1, T y2) const` - Query all indices in a box
-- `template<typename Callback> void query_box_callback(T x1, T x2, T y1, T y2, Callback cb) const` - Query with callback
+
+#### Insert
+```cpp
+void insert(T x, T y, size_t index)
+```
+Insert a point index into the grid at coordinates (x, y).
+
+#### Query Methods
+```cpp
+// Returns a new vector with results
+std::vector<size_t> query_box(T x1, T x2, T y1, T y2,
+                               bool include_min = true,
+                               bool include_max = true) const
+
+// Fills provided vector (no allocation)
+void query_box_no_alloc(T x1, T x2, T y1, T y2,
+                        std::vector<size_t>& result,
+                        bool append_results = false,
+                        bool include_min = true,
+                        bool include_max = true) const
+
+// Callback version
+template<typename Callback>
+void query_box_callback(T x1, T x2, T y1, T y2,
+                        Callback callback,
+                        bool include_min = true,
+                        bool include_max = true) const
+```
+
+**Edge Parameters:**
+- `include_min`: Include lower boundaries `[x1, [y1` (default: `true`)
+- `include_max`: Include upper boundaries `x2], y2]` (default: `true`)
+
+**Examples:**
+- `query_box(x1, x2, y1, y2)` → `[x1, x2] × [y1, y2]` (fully inclusive)
+- `query_box(x1, x2, y1, y2, false, false)` → `(x1, x2) × (y1, y2)` (fully exclusive)
+- `query_box(x1, x2, y1, y2, true, false)` → `[x1, x2) × [y1, y2)` (half-open)
+
+#### Utility Methods
+```cpp
+void clear()                           // Clear all data from the grid
+size_t get_num_cells() const          // Get total number of cells
+size_t get_num_points() const         // Get total number of stored points
+void get_dimensions(int& nx, int& ny) const  // Get grid dimensions
+void get_bounds(T& x_start, T& x_end, T& y_start, T& y_end) const  // Get grid bounds
+```
 
 ## License
 
@@ -124,8 +180,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Roadmap
 
-- [ ] Basic 2D grid implementation
-- [ ] Unit tests
+- [x] Basic 2D grid implementation
+- [x] Unit tests (30 tests)
+- [x] Edge handling parameters
 - [ ] Benchmarks
 - [ ] Python bindings
 - [ ] 3D grid support
