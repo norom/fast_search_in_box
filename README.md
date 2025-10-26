@@ -28,6 +28,7 @@ Traditional approaches like R-Tree have O(log(n)) complexity. Grid Index achieve
 
 ## Use Cases
 
+- Geophysics 3D algorithms for prestack data
 - Spatial databases and GIS applications
 - Collision detection in games and simulations
 - Neighbor finding in scientific computing
